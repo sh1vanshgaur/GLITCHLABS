@@ -44,6 +44,7 @@ class Lobby:
     winner_submission: str | None = None
     round_plan: list[dict[str, Any]] = field(default_factory=list)
     current_round_index: int = 0
+    correct_submissions: list[dict[str, Any]] = field(default_factory=list)
 
 
 class LobbyManager:
@@ -111,18 +112,38 @@ class LobbyManager:
 
         normalized_submission = self._normalize_code(code_submission)
         is_correct = self._is_correct_submission(lobby.current_snippet, normalized_submission)
+        already_solved = any(entry["player_id"] == player.id for entry in lobby.correct_submissions)
 
-        if is_correct and lobby.winner_id is None:
-            lobby.winner_id = player.id
-            lobby.winner_name = player.name
-            lobby.winner_submission = code_submission.strip()
-            player.score += 1
-            lobby.stage = "results"
-            await self.broadcast_state(lobby_code)
+        if already_solved:
             payload = self.serialize_lobby(lobby, player_id)
             payload["submissionFeedback"] = {
                 "status": "correct",
-                "message": "Correct. You won the round.",
+                "message": "Your correct submission is already locked in. Wait for the round to finish.",
+            }
+            return payload
+
+        if is_correct:
+            lobby.correct_submissions.append(
+                {
+                    "player_id": player.id,
+                    "player_name": player.name,
+                    "submission": code_submission.strip(),
+                    "solve_order": len(lobby.correct_submissions) + 1,
+                    "time_remaining": lobby.round_remaining,
+                }
+            )
+            self._sync_round_leader(lobby)
+            await self.broadcast_state(lobby_code)
+
+            if len(lobby.correct_submissions) == len(lobby.players):
+                self._finalize_round(lobby)
+                await self.broadcast_state(lobby_code)
+
+            earned_points = self._points_for_order(len(lobby.correct_submissions), len(lobby.players))
+            payload = self.serialize_lobby(lobby, player_id)
+            payload["submissionFeedback"] = {
+                "status": "correct",
+                "message": f"Correct. You locked in solve #{len(lobby.correct_submissions)} and are currently worth {earned_points} point{'s' if earned_points != 1 else ''}.",
             }
             return payload
 
@@ -158,6 +179,7 @@ class LobbyManager:
         lobby.winner_id = None
         lobby.winner_name = None
         lobby.winner_submission = None
+        lobby.correct_submissions = []
         await self.broadcast_state(lobby_code)
         return self.serialize_lobby(lobby, player_id)
 
@@ -202,6 +224,17 @@ class LobbyManager:
                 "name": lobby.winner_name,
                 "submission": lobby.winner_submission,
             },
+            "roundResults": [
+                {
+                    "playerId": entry["player_id"],
+                    "name": entry["player_name"],
+                    "submission": entry["submission"],
+                    "solveOrder": entry["solve_order"],
+                    "timeRemaining": entry["time_remaining"],
+                    "pointsEarned": self._points_for_order(entry["solve_order"], len(lobby.players)),
+                }
+                for entry in lobby.correct_submissions
+            ],
             "currentRound": 0 if not lobby.round_plan else lobby.current_round_index + 1,
             "totalRounds": len(lobby.round_plan),
             "hasNextRound": lobby.current_round_index + 1 < len(lobby.round_plan),
@@ -235,7 +268,16 @@ class LobbyManager:
                 "difficulty": lobby.current_snippet["difficulty"],
                 "category": lobby.current_snippet["category"],
                 "title": lobby.current_snippet["title"],
-                "code": lobby.current_snippet["code"],
+                "code": lobby.current_snippet["buggy_code"],
+                "buggy_code": lobby.current_snippet["buggy_code"],
+                "correct_code": lobby.current_snippet["correct_code"],
+                "bugType": lobby.current_snippet["bug_type"],
+                "bug_type": lobby.current_snippet["bug_type"],
+                "testCases": lobby.current_snippet["test_cases"],
+                "test_cases": lobby.current_snippet["test_cases"],
+                "traceSteps": lobby.current_snippet["trace_steps"],
+                "trace_steps": lobby.current_snippet["trace_steps"],
+                "explanation": lobby.current_snippet["explanation"],
                 "referenceFix": lobby.current_snippet["fixed_code"] if lobby.stage == "results" else None,
             },
         }
@@ -265,15 +307,13 @@ class LobbyManager:
 
     async def _run_round_timer(self, lobby_code: str) -> None:
         lobby = self.get_lobby(lobby_code)
-        while lobby.stage == "active" and lobby.round_remaining > 0 and lobby.winner_id is None:
+        while lobby.stage == "active" and lobby.round_remaining > 0:
             await asyncio.sleep(1)
             lobby.round_remaining -= 1
             await self.broadcast_state(lobby_code)
 
-        if lobby.stage == "active" and lobby.winner_id is None:
-            lobby.stage = "results"
-            lobby.winner_name = "No one"
-            lobby.winner_submission = "No correct fix was submitted before the timer expired."
+        if lobby.stage == "active":
+            self._finalize_round(lobby)
             await self.broadcast_state(lobby_code)
 
     def _prepare_round(self, lobby: Lobby) -> None:
@@ -284,6 +324,7 @@ class LobbyManager:
         lobby.winner_id = None
         lobby.winner_name = None
         lobby.winner_submission = None
+        lobby.correct_submissions = []
 
     def _reset_scores(self, lobby: Lobby) -> None:
         for player in lobby.players:
@@ -313,6 +354,38 @@ class LobbyManager:
 
     def _is_correct_submission(self, snippet: dict[str, Any], normalized_submission: str) -> bool:
         return normalized_submission == self._normalize_code(snippet["fixed_code"])
+
+    def _sync_round_leader(self, lobby: Lobby) -> None:
+        if not lobby.correct_submissions:
+            lobby.winner_id = None
+            lobby.winner_name = None
+            lobby.winner_submission = None
+            return
+
+        leader = lobby.correct_submissions[0]
+        lobby.winner_id = leader["player_id"]
+        lobby.winner_name = leader["player_name"]
+        lobby.winner_submission = leader["submission"]
+
+    def _finalize_round(self, lobby: Lobby) -> None:
+        if lobby.stage != "active":
+            return
+
+        for entry in lobby.correct_submissions:
+            player = self._ensure_player(lobby, entry["player_id"])
+            player.score += self._points_for_order(entry["solve_order"], len(lobby.players))
+
+        if lobby.correct_submissions:
+            self._sync_round_leader(lobby)
+        else:
+            lobby.winner_id = None
+            lobby.winner_name = "No one"
+            lobby.winner_submission = "No correct fix was submitted before the timer expired."
+
+        lobby.stage = "results"
+
+    def _points_for_order(self, solve_order: int, total_players: int) -> int:
+        return max(total_players - solve_order + 1, 1)
 
     def _normalize_code(self, value: str) -> str:
         without_block_comments = re.sub(r"/\*.*?\*/", "", value, flags=re.S)

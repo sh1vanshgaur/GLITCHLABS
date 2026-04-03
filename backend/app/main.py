@@ -1,13 +1,17 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from .data.snippets import get_problem_by_id
 from .game_state import LobbyManager
 from .models.schemas import (
     CreateLobbyRequest,
     JoinLobbyRequest,
     ReplayRoundRequest,
+    RunTraceRequest,
     StartRoundRequest,
     SubmitAnswerRequest,
+    SubmitHypothesisRequest,
+    SubmitSolutionRequest,
     VoteRequest,
 )
 
@@ -26,6 +30,55 @@ app.add_middleware(
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/problem/{problem_id}")
+def get_problem(problem_id: str) -> dict:
+    try:
+        return get_problem_by_id(problem_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/submit-hypothesis")
+def submit_hypothesis(payload: SubmitHypothesisRequest) -> dict:
+    try:
+        problem = get_problem_by_id(payload.problem_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    correct = payload.selected_hypothesis == problem["bug_type"]
+    return {
+        "correct": correct,
+        "actual_bug_type": problem["bug_type"],
+        "explanation": (
+            "Your hypothesis matches the underlying bug class."
+            if correct
+            else f"This problem is a {problem['bug_type'].replace('_', ' ')}. {problem['explanation']}"
+        ),
+    }
+
+
+@app.post("/run-trace")
+def run_trace(payload: RunTraceRequest) -> dict:
+    try:
+        problem = get_problem_by_id(payload.problem_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return {"execution_steps": problem["trace_steps"]}
+
+
+@app.post("/submit-solution")
+def submit_solution(payload: SubmitSolutionRequest) -> dict:
+    try:
+        problem = get_problem_by_id(payload.problem_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    normalize = lambda value: "".join(value.split()).lower()
+    correct = normalize(payload.code_submission) == normalize(problem["correct_code"])
+    return {"correct": correct, "explanation": problem["explanation"]}
 
 
 @app.post("/api/lobbies")

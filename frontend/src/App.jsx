@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLobbyGame } from "./hooks/useLobbyGame";
 import { formatSeconds } from "./lib/utils";
+import DebugFlowManager from "./components/DebugFlowManager";
 
 const languages = ["Python", "Java", "C", "C++"];
 const difficulties = ["Easy", "Medium", "Hard"];
@@ -25,21 +26,6 @@ const infoCards = [
   }
 ];
 
-function buildHints(snippet) {
-  if (!snippet) {
-    return [];
-  }
-
-  const accepted = Array.isArray(snippet.acceptedAnswers) ? snippet.acceptedAnswers : [];
-  const primaryClue = accepted[0] || snippet.category?.toLowerCase() || "logic";
-  const strongerClue = accepted[1] || snippet.explanation || "Check the exact token or condition that breaks execution.";
-
-  return [
-    `Hint 1: This looks like a ${snippet.category?.toLowerCase() || "code"} issue. Focus on the line where ${primaryClue} becomes relevant.`,
-    `Hint 2: Look closely for this clue: ${strongerClue}.`
-  ];
-}
-
 export default function App() {
   const {
     state,
@@ -60,6 +46,7 @@ export default function App() {
   const [voteLanguage, setVoteLanguage] = useState("Python");
   const [voteDifficulty, setVoteDifficulty] = useState("Easy");
   const [activeSnippetId, setActiveSnippetId] = useState(null);
+  const [selectedAvatarColor, setSelectedAvatarColor] = useState(mascotPalette[5]);
 
   const currentSnippet = useMemo(() => state.snippet, [state.snippet]);
   const isLandingLike = state.stage === "landing" || state.stage === "lobby";
@@ -112,16 +99,22 @@ export default function App() {
     }
   }
 
-  async function handleSubmitAnswer(event) {
-    event.preventDefault();
-    if (!editedCode.trim()) {
+  async function handleSubmitAnswer(eventOrCode, maybeCode) {
+    const codeToSubmit = typeof eventOrCode === "string" ? eventOrCode : maybeCode ?? editedCode;
+
+    if (typeof eventOrCode !== "string") {
+      eventOrCode.preventDefault();
+    }
+
+    if (!codeToSubmit.trim()) {
       return;
     }
 
     try {
-      await submitAnswer(editedCode);
+      return await submitAnswer(codeToSubmit);
     } catch {
       // Hook already stores displayable errors.
+      return null;
     }
   }
 
@@ -161,73 +154,98 @@ export default function App() {
         {isLandingLike ? (
           <main>
             <section className="landing-stage">
-              <div className="play-card">
-                <div className="play-card__top">
-                  <input
-                    className="arcade-input"
-                    maxLength={20}
-                    onChange={(event) => setPlayerName(event.target.value)}
-                    placeholder="enter name"
-                    value={playerName}
-                  />
-                  <select
-                    className="arcade-select"
-                    onChange={(event) => handleVote(event.target.value, voteDifficulty)}
-                    value={voteLanguage}
-                  >
-                    {languages.map((language) => (
-                      <option key={language} value={language}>
-                        {language}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className={`play-card ${state.stage === "lobby" ? "play-card--lobby" : ""}`}>
+                <div className={`play-card__body ${state.stage === "lobby" ? "play-card__body--lobby" : ""}`}>
+                  <div className="play-card__main">
+                    <div className={`play-card__top ${state.stage === "lobby" ? "play-card__top--lobby" : ""}`}>
+                      <div className="field-group">
+                        <label className="field-label" htmlFor="player-name">Your name</label>
+                        <input
+                          className="arcade-input"
+                          id="player-name"
+                          maxLength={20}
+                          onChange={(event) => setPlayerName(event.target.value)}
+                          placeholder="enter name"
+                          value={playerName}
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label className="field-label" htmlFor="language-select">Language</label>
+                        <select
+                          className="arcade-select"
+                          id="language-select"
+                          onChange={(event) => handleVote(event.target.value, voteDifficulty)}
+                          value={voteLanguage}
+                        >
+                          {languages.map((language) => (
+                            <option key={language} value={language}>
+                              {language}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
 
-                <div className="mascot-stage">
-                  <FaceStage stage={state.stage} status={status} />
-                  <div className="status-badge">{status}</div>
-                </div>
+                    <div className="mascot-stage">
+                      <FaceStage avatarColor={selectedAvatarColor} stage={state.stage} status={status} />
+                      <AvatarColorPicker
+                        colors={mascotPalette}
+                        selectedColor={selectedAvatarColor}
+                        onSelectColor={setSelectedAvatarColor}
+                      />
+                      <div className="status-badge">{status}</div>
+                    </div>
 
-                <button className="arcade-button arcade-button--primary" onClick={handleCreateLobby} type="button">
-                  Play!
-                </button>
-                <button className="arcade-button arcade-button--secondary" onClick={handleJoinLobby} type="button">
-                  Create Private Room
-                </button>
-
-                <div className="lobby-tools">
-                  <input
-                    className="arcade-input arcade-input--code"
-                    maxLength={5}
-                    onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
-                    placeholder="ROOM"
-                    value={joinCode}
-                  />
-                  <div className="difficulty-row">
-                    {difficulties.map((difficulty) => (
-                      <button
-                        className={`chip-button ${voteDifficulty === difficulty ? "chip-button--active" : ""}`}
-                        key={difficulty}
-                        onClick={() => handleVote(voteLanguage, difficulty)}
-                        type="button"
-                      >
-                        {difficulty}
+                    <div className="action-stack">
+                      <p className="helper-copy">Create a room and share the code with your friends.</p>
+                      <button className="arcade-button arcade-button--primary" onClick={handleCreateLobby} type="button">
+                        Create Room
                       </button>
-                    ))}
+                      <p className="helper-copy">Joining a friend? Type their room code below, then join.</p>
+                      <button className="arcade-button arcade-button--secondary" onClick={handleJoinLobby} type="button">
+                        Join Room
+                      </button>
+                    </div>
+
+                    <div className="lobby-tools">
+                      <div className="field-group">
+                        <label className="field-label" htmlFor="room-code">Room code</label>
+                        <input
+                          className="arcade-input arcade-input--code"
+                          id="room-code"
+                          maxLength={5}
+                          onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                          placeholder="ENTER CODE"
+                          value={joinCode}
+                        />
+                      </div>
+                      <div className="difficulty-row">
+                        {difficulties.map((difficulty) => (
+                          <button
+                            className={`chip-button ${voteDifficulty === difficulty ? "chip-button--active" : ""}`}
+                            key={difficulty}
+                            onClick={() => handleVote(voteLanguage, difficulty)}
+                            type="button"
+                          >
+                            {difficulty}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {error ? <p className="feedback-strip feedback-strip--error">{error}</p> : null}
                   </div>
+
+                  {state.stage === "lobby" ? (
+                    <LobbyPanel
+                      lobbyState={state}
+                      onStartRound={handleStartRound}
+                      onVoteChange={handleVote}
+                      voteDifficulty={voteDifficulty}
+                      voteLanguage={voteLanguage}
+                    />
+                  ) : null}
                 </div>
-
-                {error ? <p className="feedback-strip feedback-strip--error">{error}</p> : null}
-
-                {state.stage === "lobby" ? (
-                  <LobbyPanel
-                    lobbyState={state}
-                    onStartRound={handleStartRound}
-                    onVoteChange={handleVote}
-                    voteDifficulty={voteDifficulty}
-                    voteLanguage={voteLanguage}
-                  />
-                ) : null}
               </div>
             </section>
 
@@ -273,14 +291,39 @@ export default function App() {
   );
 }
 
-function FaceStage({ stage, status }) {
+function FaceStage({ avatarColor, stage, status }) {
   const face = stage === "landing" ? "^_^" : stage === "lobby" ? "-_-" : stage === "countdown" ? "0_0" : status === "Error" ? "x_x" : ">_<";
 
   return (
     <div className="face-stage">
       <span className="face-arrow">&lt;</span>
-      <div className="face-bubble">{face}</div>
+      <div className="face-bubble" style={{ background: `linear-gradient(180deg, ${avatarColor} 0%, rgba(31, 53, 164, 0.98) 100%)` }}>
+        {face}
+      </div>
       <span className="face-arrow">&gt;</span>
+    </div>
+  );
+}
+
+function AvatarColorPicker({ colors, onSelectColor, selectedColor }) {
+  return (
+    <div className="avatar-color-picker" role="radiogroup" aria-label="Avatar color">
+      {colors.map((color, index) => {
+        const isActive = color === selectedColor;
+
+        return (
+          <button
+            aria-checked={isActive}
+            aria-label={`Avatar color ${index + 1}`}
+            className={`avatar-swatch ${isActive ? "avatar-swatch--active" : ""}`}
+            key={color}
+            onClick={() => onSelectColor(color)}
+            role="radio"
+            style={{ "--swatch-color": color }}
+            type="button"
+          />
+        );
+      })}
     </div>
   );
 }
@@ -319,7 +362,7 @@ function LobbyPanel({ lobbyState, onStartRound, onVoteChange, voteLanguage, vote
           <p className="eyebrow">Votes</p>
           <div className="vote-group">
             <span>Language</span>
-            <div className="difficulty-row difficulty-row--wrap">
+            <div className="vote-grid vote-grid--two">
               {languages.map((language) => (
                 <button
                   className={`chip-button ${voteLanguage === language ? "chip-button--active" : ""}`}
@@ -334,7 +377,7 @@ function LobbyPanel({ lobbyState, onStartRound, onVoteChange, voteLanguage, vote
           </div>
           <div className="vote-group">
             <span>Difficulty</span>
-            <div className="difficulty-row difficulty-row--wrap">
+            <div className="vote-grid vote-grid--difficulty">
               {difficulties.map((difficulty) => (
                 <button
                   className={`chip-button ${voteDifficulty === difficulty ? "chip-button--active" : ""}`}
@@ -368,9 +411,6 @@ function CountdownScreen({ countdown, currentRound, lobbyCode, totalRounds }) {
 }
 
 function GameScreen({ currentRound, editedCode, onCodeChange, onSubmitAnswer, roundTimer, submissionFeedback, snippet, totalRounds }) {
-  const hints = buildHints(snippet);
-  const visibleHintCount = roundTimer <= 30 ? 2 : roundTimer <= 60 ? 1 : 0;
-
   return (
     <main className="stage-screen">
       <section className="stage-card">
@@ -383,50 +423,15 @@ function GameScreen({ currentRound, editedCode, onCodeChange, onSubmitAnswer, ro
           <div className="timer-pill">{formatSeconds(roundTimer)}</div>
         </div>
 
-        <div className="code-grid">
-          <CodePanel title="Buggy Code" value={snippet.code} readOnly />
-          <CodePanel title="Your Fix" onChange={onCodeChange} value={editedCode} />
-        </div>
-
-        <div className="stage-meta">
-          <span>{snippet.category}</span>
-          <span>Submit the full corrected code</span>
-        </div>
-
-        <div className="hint-panel">
-          <div className="hint-panel__header">
-            <p className="eyebrow">Hints</p>
-            <span>{visibleHintCount}/2 unlocked</span>
-          </div>
-          <div className="hint-list">
-            {hints.map((hint, index) => {
-              const isUnlocked = index < visibleHintCount;
-
-              return (
-                <div className={`hint-item ${isUnlocked ? "hint-item--active" : ""}`} key={hint}>
-                  {isUnlocked ? hint : `Hint ${index + 1} unlocks after ${index === 0 ? "60" : "30"} seconds.`}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <form className="submit-row" onSubmit={onSubmitAnswer}>
-          <button className="arcade-button arcade-button--primary" type="submit">
-            Submit Fix
-          </button>
-          <button className="arcade-button arcade-button--secondary" onClick={() => onCodeChange(snippet.code)} type="button">
-            Reset
-          </button>
-        </form>
-
-        {submissionFeedback ? (
-          <p className={`feedback-strip ${submissionFeedback.status === "correct" ? "feedback-strip--success" : ""}`}>
-            {submissionFeedback.message}
-          </p>
-        ) : (
-          <p className="feedback-strip">Read the buggy code on the left and write your corrected version on the right.</p>
-        )}
+        <DebugFlowManager
+          initialCode={editedCode}
+          onSubmitSolution={async (_event, nextCode) => {
+            return await handleSubmitAnswer(nextCode);
+          }}
+          problem={snippet}
+          roundTimer={formatSeconds(roundTimer)}
+          submissionFeedback={submissionFeedback}
+        />
       </section>
     </main>
   );
@@ -448,13 +453,28 @@ function CodePanel({ onChange, readOnly = false, title, value }) {
 }
 
 function ResultsScreen({ lobbyState, onReplayRound, snippet }) {
+  const solvedPlayerIds = new Set(lobbyState.roundResults.map((result) => result.playerId));
+  const rankedResults = [
+    ...lobbyState.roundResults,
+    ...lobbyState.players
+      .filter((player) => !solvedPlayerIds.has(player.id))
+      .map((player) => ({
+        playerId: player.id,
+        name: player.name,
+        submission: "No correct fix submitted.",
+        solveOrder: null,
+        timeRemaining: 0,
+        pointsEarned: 0
+      }))
+  ];
+
   return (
     <main className="stage-screen">
       <section className="stage-card">
         <div className="stage-card__header">
           <div>
             <p className="eyebrow">Round complete</p>
-            <h2>{lobbyState.winner.name || "No winner this round"}</h2>
+            <h2>{lobbyState.winner.name || "No solver this round"}</h2>
             <p className="match-copy">Problem {lobbyState.currentRound} of {lobbyState.totalRounds}</p>
           </div>
           <button className="arcade-button arcade-button--primary arcade-button--small" onClick={onReplayRound} type="button">
@@ -464,7 +484,7 @@ function ResultsScreen({ lobbyState, onReplayRound, snippet }) {
 
         <div className="results-grid">
           <div className="subpanel">
-            <p className="eyebrow">Winning submission</p>
+            <p className="eyebrow">Fastest solve</p>
             <pre className="code-area">
               <code>{lobbyState.winner.submission || "No correct fix was submitted."}</code>
             </pre>
@@ -478,7 +498,28 @@ function ResultsScreen({ lobbyState, onReplayRound, snippet }) {
         </div>
 
         <div className="subpanel">
-          <p className="eyebrow">Scoreboard</p>
+          <p className="eyebrow">Round ranking</p>
+          <div className="player-list">
+            {rankedResults.map((result, index) => (
+              <div className="player-row" key={result.playerId}>
+                <div>
+                  <strong>
+                    {index + 1}. {result.name}
+                  </strong>
+                  <span>
+                    {result.solveOrder
+                      ? `solve #${result.solveOrder} • ${formatSeconds(result.timeRemaining)} left`
+                      : "unsolved • 0 pts"}
+                  </span>
+                </div>
+                <b>+{result.pointsEarned}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="subpanel">
+          <p className="eyebrow">Match scoreboard</p>
           <div className="player-list">
             {lobbyState.players.map((player, index) => (
               <div className="player-row" key={player.id}>

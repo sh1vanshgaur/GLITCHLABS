@@ -13,6 +13,7 @@ const initialState = {
   currentRound: 0,
   totalRounds: 0,
   hasNextRound: false,
+  roundResults: [],
   winner: { id: null, name: null, answer: null },
   players: [],
   votes: {

@@ -33,3 +33,17 @@ class SubmitAnswerRequest(BaseModel):
 
 class ReplayRoundRequest(BaseModel):
     player_id: str
+
+
+class SubmitHypothesisRequest(BaseModel):
+    problem_id: str
+    selected_hypothesis: str
+
+
+class RunTraceRequest(BaseModel):
+    problem_id: str
+
+
+class SubmitSolutionRequest(BaseModel):
+    problem_id: str
+    code_submission: str = Field(min_length=1, max_length=10000)
