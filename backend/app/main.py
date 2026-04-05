@@ -1,29 +1,43 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from .data.snippets import get_problem_by_id
+from .config import allowed_origins, state_file_path
+from .data.snippets import ALL_SNIPPETS, get_problem_by_id, get_public_problem_by_id
 from .game_state import LobbyManager
 from .models.schemas import (
     CreateLobbyRequest,
     JoinLobbyRequest,
-    ReplayRoundRequest,
     RunTraceRequest,
-    StartRoundRequest,
     SubmitAnswerRequest,
+    SubmitExplanationRequest,
     SubmitHypothesisRequest,
     SubmitSolutionRequest,
     VoteRequest,
 )
+from .storage import StateStore
 
-app = FastAPI(title="GLITCHLABS API")
-manager = LobbyManager()
+store = StateStore(state_file_path())
+manager = LobbyManager(store)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    await manager.shutdown()
+
+
+app = FastAPI(title="GLITCHLABS API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=allowed_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-Session-Token"],
 )
 
 
@@ -35,9 +49,14 @@ def health_check() -> dict[str, str]:
 @app.get("/problem/{problem_id}")
 def get_problem(problem_id: str) -> dict:
     try:
-        return get_problem_by_id(problem_id)
+        return get_public_problem_by_id(problem_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/questions")
+def get_questions() -> list[dict[str, str]]:
+    return [{"id": question["id"], "title": question["title"]} for question in ALL_SNIPPETS]
 
 
 @app.post("/submit-hypothesis")
@@ -83,7 +102,10 @@ def submit_solution(payload: SubmitSolutionRequest) -> dict:
 
 @app.post("/api/lobbies")
 async def create_lobby(payload: CreateLobbyRequest) -> dict:
-    return await manager.create_lobby(payload.player_name)
+    try:
+        return await manager.create_lobby(payload.player_name)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.post("/api/lobbies/join")
@@ -92,51 +114,90 @@ async def join_lobby(payload: JoinLobbyRequest) -> dict:
         return await manager.join_lobby(payload.player_name, payload.lobby_code)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.post("/api/lobbies/{lobby_code}/vote")
-async def vote(lobby_code: str, payload: VoteRequest) -> dict:
+async def vote(
+    lobby_code: str,
+    payload: VoteRequest,
+    x_session_token: str = Header(default="", alias="X-Session-Token"),
+) -> dict:
     try:
-        return await manager.vote(lobby_code, payload.player_id, payload.language, payload.difficulty)
+        return await manager.vote(lobby_code, x_session_token, payload.language, payload.difficulty)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.post("/api/lobbies/{lobby_code}/start")
-async def start_round(lobby_code: str, payload: StartRoundRequest) -> dict:
+async def start_round(lobby_code: str, x_session_token: str = Header(default="", alias="X-Session-Token")) -> dict:
     try:
-        return await manager.start_round(lobby_code, payload.player_id)
+        return await manager.start_round(lobby_code, x_session_token)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
     except ValueError as error:
-        raise HTTPException(status_code=403, detail=str(error)) from error
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.post("/api/lobbies/{lobby_code}/submit")
-async def submit_answer(lobby_code: str, payload: SubmitAnswerRequest) -> dict:
+async def submit_answer(
+    lobby_code: str,
+    payload: SubmitAnswerRequest,
+    x_session_token: str = Header(default="", alias="X-Session-Token"),
+) -> dict:
     try:
-        return await manager.submit_answer(lobby_code, payload.player_id, payload.code_submission)
+        return await manager.submit_answer(lobby_code, x_session_token, payload.code_submission)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+
+
+@app.post("/api/lobbies/{lobby_code}/explain")
+async def submit_explanation(
+    lobby_code: str,
+    payload: SubmitExplanationRequest,
+    x_session_token: str = Header(default="", alias="X-Session-Token"),
+) -> dict:
+    try:
+        return await manager.submit_explanation(lobby_code, x_session_token, payload.explanation)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.post("/api/lobbies/{lobby_code}/replay")
-async def replay_round(lobby_code: str, payload: ReplayRoundRequest) -> dict:
+async def replay_round(lobby_code: str, x_session_token: str = Header(default="", alias="X-Session-Token")) -> dict:
     try:
-        return await manager.replay_round(lobby_code, payload.player_id)
+        return await manager.replay_round(lobby_code, x_session_token)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
     except ValueError as error:
-        raise HTTPException(status_code=403, detail=str(error)) from error
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.websocket("/ws/lobbies/{lobby_code}")
 async def lobby_socket(websocket: WebSocket, lobby_code: str) -> None:
+    session_token = websocket.query_params.get("token", "")
     try:
-        await manager.register_socket(lobby_code, websocket)
+        await manager.register_socket(lobby_code, session_token, websocket)
         while True:
             await websocket.receive_text()
     except KeyError:
         await websocket.close(code=4404)
+    except PermissionError:
+        await websocket.close(code=4401)
     except WebSocketDisconnect:
-        manager.unregister_socket(lobby_code.upper(), websocket)
+        await manager.disconnect_socket(lobby_code.upper(), session_token, websocket)

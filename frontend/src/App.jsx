@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import DebugFlowManager from "./components/DebugFlowManager";
 import { useLobbyGame } from "./hooks/useLobbyGame";
 import { formatSeconds } from "./lib/utils";
-import DebugFlowManager from "./components/DebugFlowManager";
 
 const languages = ["Python", "Java", "C", "C++"];
 const difficulties = ["Easy", "Medium", "Hard"];
@@ -32,11 +32,13 @@ export default function App() {
     status,
     error,
     submissionFeedback,
+    currentPlayer,
     createLobby,
     joinLobby,
     vote,
     startRound,
     submitAnswer,
+    submitExplanation,
     replayRound
   } = useLobbyGame();
 
@@ -99,15 +101,9 @@ export default function App() {
     }
   }
 
-  async function handleSubmitAnswer(eventOrCode, maybeCode) {
-    const codeToSubmit = typeof eventOrCode === "string" ? eventOrCode : maybeCode ?? editedCode;
-
-    if (typeof eventOrCode !== "string") {
-      eventOrCode.preventDefault();
-    }
-
+  async function handleSubmitAnswer(codeToSubmit) {
     if (!codeToSubmit.trim()) {
-      return;
+      return null;
     }
 
     try {
@@ -116,6 +112,14 @@ export default function App() {
       // Hook already stores displayable errors.
       return null;
     }
+  }
+
+  async function handleSaveExplanation(explanation) {
+    if (!explanation.trim()) {
+      return null;
+    }
+
+    return await submitExplanation(explanation);
   }
 
   async function handleReplayRound() {
@@ -238,6 +242,7 @@ export default function App() {
 
                   {state.stage === "lobby" ? (
                     <LobbyPanel
+                      currentPlayer={currentPlayer}
                       lobbyState={state}
                       onStartRound={handleStartRound}
                       onVoteChange={handleVote}
@@ -274,6 +279,7 @@ export default function App() {
           <GameScreen
             editedCode={editedCode}
             onCodeChange={setEditedCode}
+            onSaveExplanation={handleSaveExplanation}
             onSubmitAnswer={handleSubmitAnswer}
             currentRound={state.currentRound}
             roundTimer={state.roundRemaining}
@@ -284,7 +290,7 @@ export default function App() {
         ) : null}
 
         {state.stage === "results" && currentSnippet ? (
-          <ResultsScreen lobbyState={state} onReplayRound={handleReplayRound} snippet={currentSnippet} />
+          <ResultsScreen currentPlayer={currentPlayer} lobbyState={state} onReplayRound={handleReplayRound} snippet={currentSnippet} />
         ) : null}
       </div>
     </div>
@@ -328,7 +334,11 @@ function AvatarColorPicker({ colors, onSelectColor, selectedColor }) {
   );
 }
 
-function LobbyPanel({ lobbyState, onStartRound, onVoteChange, voteLanguage, voteDifficulty }) {
+function LobbyPanel({ currentPlayer, lobbyState, onStartRound, onVoteChange, voteLanguage, voteDifficulty }) {
+  const isHost = currentPlayer?.isHost ?? false;
+  const hasEnoughPlayers = lobbyState.players.length >= 1;
+  const canStart = isHost && hasEnoughPlayers;
+
   return (
     <div className="lobby-panel">
       <div className="lobby-panel__header">
@@ -336,8 +346,9 @@ function LobbyPanel({ lobbyState, onStartRound, onVoteChange, voteLanguage, vote
           <p className="eyebrow">Room</p>
           <h3>{lobbyState.code}</h3>
           <p className="match-copy">Each match now runs 3 problems before the lobby resets for a fresh game.</p>
+          {!hasEnoughPlayers ? <p className="match-copy">At least 1 player is needed before the host can start the match.</p> : null}
         </div>
-        <button className="arcade-button arcade-button--primary arcade-button--small" onClick={onStartRound} type="button">
+        <button className="arcade-button arcade-button--primary arcade-button--small" disabled={!canStart} onClick={onStartRound} type="button">
           Start Match
         </button>
       </div>
@@ -347,7 +358,7 @@ function LobbyPanel({ lobbyState, onStartRound, onVoteChange, voteLanguage, vote
           <p className="eyebrow">Players</p>
           <div className="player-list">
             {lobbyState.players.map((player) => (
-              <div className="player-row" key={player.id}>
+              <div className="player-row" key={player.publicId}>
                 <div>
                   <strong>{player.name}</strong>
                   <span>{player.isHost ? "host" : "player"}</span>
@@ -410,7 +421,7 @@ function CountdownScreen({ countdown, currentRound, lobbyCode, totalRounds }) {
   );
 }
 
-function GameScreen({ currentRound, editedCode, onCodeChange, onSubmitAnswer, roundTimer, submissionFeedback, snippet, totalRounds }) {
+function GameScreen({ currentRound, editedCode, onCodeChange, onSaveExplanation, onSubmitAnswer, roundTimer, submissionFeedback, snippet, totalRounds }) {
   return (
     <main className="stage-screen">
       <section className="stage-card">
@@ -425,11 +436,12 @@ function GameScreen({ currentRound, editedCode, onCodeChange, onSubmitAnswer, ro
 
         <DebugFlowManager
           initialCode={editedCode}
-          onSubmitSolution={async (_event, nextCode) => {
-            return await handleSubmitAnswer(nextCode);
+          onSaveExplanation={onSaveExplanation}
+          onSubmitSolution={async (nextCode) => {
+            onCodeChange(nextCode);
+            return await onSubmitAnswer(nextCode);
           }}
           problem={snippet}
-          roundTimer={formatSeconds(roundTimer)}
           submissionFeedback={submissionFeedback}
         />
       </section>
@@ -437,31 +449,18 @@ function GameScreen({ currentRound, editedCode, onCodeChange, onSubmitAnswer, ro
   );
 }
 
-function CodePanel({ onChange, readOnly = false, title, value }) {
-  return (
-    <div className="code-panel">
-      <div className="code-panel__header">{title}</div>
-      {readOnly ? (
-        <pre className="code-area">
-          <code>{value}</code>
-        </pre>
-      ) : (
-        <textarea className="code-area code-area--editable" onChange={(event) => onChange(event.target.value)} spellCheck={false} value={value} />
-      )}
-    </div>
-  );
-}
-
-function ResultsScreen({ lobbyState, onReplayRound, snippet }) {
-  const solvedPlayerIds = new Set(lobbyState.roundResults.map((result) => result.playerId));
+function ResultsScreen({ currentPlayer, lobbyState, onReplayRound, snippet }) {
+  const solvedPlayerIds = new Set(lobbyState.roundResults.map((result) => result.playerPublicId));
   const rankedResults = [
     ...lobbyState.roundResults,
     ...lobbyState.players
-      .filter((player) => !solvedPlayerIds.has(player.id))
+      .filter((player) => !solvedPlayerIds.has(player.publicId))
       .map((player) => ({
-        playerId: player.id,
+        playerPublicId: player.publicId,
         name: player.name,
-        submission: "No correct fix submitted.",
+        submission: "No submission recorded.",
+        submitted: false,
+        isCorrect: false,
         solveOrder: null,
         timeRemaining: 0,
         pointsEarned: 0
@@ -477,7 +476,12 @@ function ResultsScreen({ lobbyState, onReplayRound, snippet }) {
             <h2>{lobbyState.winner.name || "No solver this round"}</h2>
             <p className="match-copy">Problem {lobbyState.currentRound} of {lobbyState.totalRounds}</p>
           </div>
-          <button className="arcade-button arcade-button--primary arcade-button--small" onClick={onReplayRound} type="button">
+          <button
+            className="arcade-button arcade-button--primary arcade-button--small"
+            disabled={!currentPlayer?.isHost}
+            onClick={onReplayRound}
+            type="button"
+          >
             {lobbyState.hasNextRound ? "Next Problem" : "Back to Lobby"}
           </button>
         </div>
@@ -501,7 +505,7 @@ function ResultsScreen({ lobbyState, onReplayRound, snippet }) {
           <p className="eyebrow">Round ranking</p>
           <div className="player-list">
             {rankedResults.map((result, index) => (
-              <div className="player-row" key={result.playerId}>
+              <div className="player-row" key={result.playerPublicId}>
                 <div>
                   <strong>
                     {index + 1}. {result.name}
@@ -509,7 +513,9 @@ function ResultsScreen({ lobbyState, onReplayRound, snippet }) {
                   <span>
                     {result.solveOrder
                       ? `solve #${result.solveOrder} • ${formatSeconds(result.timeRemaining)} left`
-                      : "unsolved • 0 pts"}
+                      : result.submitted
+                        ? "submitted • incorrect"
+                        : "unsolved • 0 pts"}
                   </span>
                 </div>
                 <b>+{result.pointsEarned}</b>
@@ -522,7 +528,7 @@ function ResultsScreen({ lobbyState, onReplayRound, snippet }) {
           <p className="eyebrow">Match scoreboard</p>
           <div className="player-list">
             {lobbyState.players.map((player, index) => (
-              <div className="player-row" key={player.id}>
+              <div className="player-row" key={player.publicId}>
                 <div>
                   <strong>
                     {index + 1}. {player.name}

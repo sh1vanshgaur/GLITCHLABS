@@ -1,0 +1,22 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      GLITCHLABS_ALLOWED_ORIGINS: http://localhost:4173
+      GLITCHLABS_STATE_FILE: /app/runtime/state.json
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-state:/app/runtime
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "4173:80"
+
+volumes:
+  backend-state:

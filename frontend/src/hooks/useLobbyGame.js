@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-
-const API_BASE = "http://127.0.0.1:8000";
+import { useEffect, useMemo, useState } from "react";
+import { API_BASE, WS_BASE } from "../lib/apiConfig";
 
 const initialState = {
-  playerId: null,
+  playerPublicId: null,
+  sessionToken: "",
   code: null,
   stage: "landing",
   selectedLanguage: "Python",
@@ -14,7 +14,7 @@ const initialState = {
   totalRounds: 0,
   hasNextRound: false,
   roundResults: [],
-  winner: { id: null, name: null, answer: null },
+  winner: { name: null, submission: null },
   players: [],
   votes: {
     language: { Python: 0, Java: 0, C: 0, "C++": 0 },
@@ -29,12 +29,17 @@ export function useLobbyGame() {
   const [error, setError] = useState("");
   const [submissionFeedback, setSubmissionFeedback] = useState(null);
 
+  const currentPlayer = useMemo(
+    () => state.players.find((player) => player.publicId === state.playerPublicId) ?? null,
+    [state.playerPublicId, state.players]
+  );
+
   useEffect(() => {
-    if (!state.code) {
+    if (!state.code || !state.sessionToken) {
       return undefined;
     }
 
-    const socket = new WebSocket(`ws://127.0.0.1:8000/ws/lobbies/${state.code}`);
+    const socket = new WebSocket(`${WS_BASE}/ws/lobbies/${state.code}?token=${encodeURIComponent(state.sessionToken)}`);
 
     socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
@@ -42,16 +47,17 @@ export function useLobbyGame() {
         setState((current) => ({
           ...current,
           ...message.payload,
-          playerId: current.playerId ?? message.payload.playerId ?? current.playerId
+          playerPublicId: current.playerPublicId ?? message.payload.playerPublicId ?? null,
+          sessionToken: current.sessionToken || message.payload.sessionToken || ""
         }));
-        setSubmissionFeedback((current) =>
-          message.payload.stage !== "active" ? null : current
-        );
+        setSubmissionFeedback((currentFeedback) => (message.payload.stage !== "active" ? null : currentFeedback));
+        setStatus("Connected");
       }
     };
 
     socket.onerror = () => {
-      setError("WebSocket connection failed. Make sure the backend is running.");
+      setStatus("Error");
+      setError("WebSocket connection failed. Make sure the backend is running and your session is valid.");
     };
 
     const heartbeat = window.setInterval(() => {
@@ -64,7 +70,7 @@ export function useLobbyGame() {
       window.clearInterval(heartbeat);
       socket.close();
     };
-  }, [state.code]);
+  }, [state.code, state.sessionToken]);
 
   async function createLobby(playerName) {
     return performRequest("Creating lobby...", "/api/lobbies", {
@@ -84,54 +90,67 @@ export function useLobbyGame() {
   }
 
   async function vote(language, difficulty) {
-    if (!state.code || !state.playerId) {
-      return;
+    if (!state.code || !state.sessionToken) {
+      return null;
     }
 
     return performRequest("Saving vote...", `/api/lobbies/${state.code}/vote`, {
       method: "POST",
-      body: JSON.stringify({
-        player_id: state.playerId,
-        language,
-        difficulty
-      })
+      body: JSON.stringify({ language, difficulty })
     });
   }
 
   async function startRound() {
-    if (!state.code || !state.playerId) {
-      return;
+    if (!state.code || !state.sessionToken) {
+      return null;
     }
 
-    return performRequest("Starting round...", `/api/lobbies/${state.code}/start`, {
-      method: "POST",
-      body: JSON.stringify({ player_id: state.playerId })
-    }, { clearSubmissionFeedback: true });
+    return performRequest(
+      "Starting round...",
+      `/api/lobbies/${state.code}/start`,
+      { method: "POST" },
+      { clearSubmissionFeedback: true }
+    );
   }
 
   async function submitAnswer(codeSubmission) {
-    if (!state.code || !state.playerId) {
-      return;
+    if (!state.code || !state.sessionToken) {
+      return null;
     }
 
-    return performRequest("Checking answer...", `/api/lobbies/${state.code}/submit`, {
+    return performRequest(
+      "Checking answer...",
+      `/api/lobbies/${state.code}/submit`,
+      {
+        method: "POST",
+        body: JSON.stringify({ code_submission: codeSubmission })
+      },
+      { trackSubmissionFeedback: true }
+    );
+  }
+
+  async function submitExplanation(explanation) {
+    if (!state.code || !state.sessionToken) {
+      return null;
+    }
+
+    return performRequest("Saving explanation...", `/api/lobbies/${state.code}/explain`, {
       method: "POST",
-      body: JSON.stringify({
-        player_id: state.playerId,
-        code_submission: codeSubmission
-      })
-    }, { trackSubmissionFeedback: true });
+      body: JSON.stringify({ explanation })
+    }, { mergeState: false });
   }
 
   async function replayRound() {
-    if (!state.code || !state.playerId) {
-      return;
+    if (!state.code || !state.sessionToken) {
+      return null;
     }
 
-    return performRequest("Resetting lobby...", `/api/lobbies/${state.code}/replay`, {
-      method: "POST",
-      body: JSON.stringify({ player_id: state.playerId })
-    }, { clearSubmissionFeedback: true });
+    return performRequest(
+      "Resetting lobby...",
+      `/api/lobbies/${state.code}/replay`,
+      { method: "POST" },
+      { clearSubmissionFeedback: true }
+    );
   }
 
   async function performRequest(nextStatus, path, options, behavior = {}) {
@@ -145,7 +164,9 @@ export function useLobbyGame() {
       const response = await fetch(`${API_BASE}${path}`, {
         ...options,
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...(state.sessionToken ? { "X-Session-Token": state.sessionToken } : {}),
+          ...(options?.headers ?? {})
         }
       });
 
@@ -155,12 +176,14 @@ export function useLobbyGame() {
         throw new Error(payload.detail || "Request failed.");
       }
 
-      setState((current) => ({
-        ...current,
-        ...payload,
-        playerId: payload.playerId ?? current.playerId,
-        stage: payload.stage ?? current.stage
-      }));
+      if (behavior.mergeState !== false) {
+        setState((current) => ({
+          ...current,
+          ...payload,
+          playerPublicId: payload.playerPublicId ?? current.playerPublicId,
+          sessionToken: payload.sessionToken ?? current.sessionToken
+        }));
+      }
       if (behavior.trackSubmissionFeedback) {
         setSubmissionFeedback(payload.submissionFeedback ?? null);
       }
@@ -178,11 +201,13 @@ export function useLobbyGame() {
     status,
     error,
     submissionFeedback,
+    currentPlayer,
     createLobby,
     joinLobby,
     vote,
     startRound,
     submitAnswer,
+    submitExplanation,
     replayRound
   };
 }

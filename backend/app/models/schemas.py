@@ -17,22 +17,12 @@ class JoinLobbyRequest(BaseModel):
 
 
 class VoteRequest(BaseModel):
-    player_id: str
     language: Language
     difficulty: Difficulty
 
 
-class StartRoundRequest(BaseModel):
-    player_id: str
-
-
 class SubmitAnswerRequest(BaseModel):
-    player_id: str
     code_submission: str = Field(min_length=1, max_length=10000)
-
-
-class ReplayRoundRequest(BaseModel):
-    player_id: str
 
 
 class SubmitHypothesisRequest(BaseModel):
@@ -47,3 +37,7 @@ class RunTraceRequest(BaseModel):
 class SubmitSolutionRequest(BaseModel):
     problem_id: str
     code_submission: str = Field(min_length=1, max_length=10000)
+
+
+class SubmitExplanationRequest(BaseModel):
+    explanation: str = Field(min_length=1, max_length=2000)

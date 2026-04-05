@@ -821,6 +821,7 @@
 
   .problem-description-card,
   .problem-brief,
+  .behavior-insight-card,
   .step-flow-card,
   .interaction-stage,
   .trace-workspace,
@@ -833,7 +834,8 @@
   }
 
   .problem-description-card,
-  .step-flow-card,
+  .behavior-insight-card,
+  .mode-callout,
   .interaction-stage,
   .hypothesis-modal,
   .explanation-card {
@@ -865,6 +867,40 @@
     color: rgba(255, 255, 255, 0.88);
   }
 
+  .problem-statement-block {
+    margin-top: 1rem;
+    padding: 1rem 1.05rem;
+    border-radius: 1rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(8, 22, 70, 0.28));
+    border: 1px solid rgba(164, 201, 255, 0.18);
+  }
+
+  .problem-statement-text {
+    margin: 0.55rem 0 0;
+    line-height: 1.75;
+    color: rgba(255, 255, 255, 0.94);
+  }
+
+  .problem-sample-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
+    margin-top: 0.95rem;
+  }
+
+  .problem-sample-card {
+    padding: 0.9rem 1rem;
+    border-radius: 0.9rem;
+    background: rgba(8, 22, 70, 0.36);
+    border: 1px solid rgba(164, 201, 255, 0.12);
+  }
+
+  .problem-sample-card p {
+    margin: 0.4rem 0 0;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.88);
+  }
+
   .problem-description-meta {
     display: grid;
     gap: 0.8rem;
@@ -893,18 +929,11 @@
     line-height: 1.4;
   }
 
-  .step-flow-card__header,
   .interaction-stage__header {
     display: flex;
     justify-content: space-between;
     gap: 1rem;
     align-items: start;
-  }
-
-  .flow-progress {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.6rem;
   }
 
   .flow-step,
@@ -927,7 +956,6 @@
     transition: opacity 160ms ease, transform 160ms ease, border-color 160ms ease, background 160ms ease;
   }
 
-  .flow-step span,
   .phase-badge,
   .trace-counter {
     display: inline-flex;
@@ -939,35 +967,6 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-  }
-
-  .flow-step span {
-    width: 2rem;
-    height: 2rem;
-  }
-
-  .flow-step strong {
-    font-size: 0.9rem;
-    letter-spacing: 0.06em;
-  }
-
-  .flow-step--done {
-    opacity: 0.7;
-    transform: scale(0.98);
-    background: rgba(67, 147, 230, 0.14);
-    border-color: rgba(113, 177, 255, 0.24);
-  }
-
-  .flow-step--current {
-    opacity: 1;
-    transform: scale(1);
-    background: linear-gradient(180deg, rgba(73, 143, 255, 0.24), rgba(40, 88, 184, 0.3));
-    border-color: rgba(132, 193, 255, 0.52);
-    box-shadow: 0 10px 28px rgba(8, 22, 70, 0.18);
-  }
-
-  .flow-step--current span {
-    background: rgba(255, 255, 255, 0.2);
   }
 
   .problem-brief {
@@ -994,6 +993,18 @@
 
   .problem-brief__card--expected .code-area {
     background: rgba(11, 47, 29, 0.52);
+  }
+
+  .behavior-insight-card {
+    background: linear-gradient(180deg, rgba(255, 197, 82, 0.14), rgba(8, 22, 70, 0.42));
+    border-color: rgba(255, 198, 98, 0.22);
+  }
+
+  .behavior-insight-copy {
+    margin: 0.35rem 0 0;
+    max-width: 58rem;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.92);
   }
 
   .code-area--compact {
@@ -1067,6 +1078,29 @@
 
   .interaction-stage__header {
     margin-bottom: 0.1rem;
+  }
+
+  .mode-callout {
+    padding: 1rem 1.1rem;
+    border-radius: 1rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(8, 22, 70, 0.34));
+    border: 2px solid rgba(164, 201, 255, 0.18);
+  }
+
+  .mode-callout--trace {
+    background: linear-gradient(180deg, rgba(121, 232, 76, 0.14), rgba(8, 22, 70, 0.34));
+    border-color: rgba(121, 232, 76, 0.28);
+  }
+
+  .mode-callout h4 {
+    margin: 0.35rem 0 0;
+    font-size: 1.1rem;
+  }
+
+  .mode-callout p:last-child {
+    margin: 0.55rem 0 0;
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.9);
   }
 
   .trace-code-panel,
@@ -1165,6 +1199,172 @@
   .explanation-input {
     min-height: 10rem;
   }
+
+  .round-layout {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    gap: 1.2rem;
+    align-items: start;
+  }
+
+  .round-main {
+    display: grid;
+    gap: 1.2rem;
+    min-width: 0;
+  }
+
+  .progress-sidebar {
+    position: sticky;
+    top: 1rem;
+    padding: 1.1rem;
+    border-radius: 1rem;
+    background: rgba(8, 22, 70, 0.5);
+    border: 2px solid rgba(164, 201, 255, 0.16);
+    box-shadow: 0 8px 24px rgba(9, 23, 70, 0.22);
+  }
+
+  .progress-sidebar__header h3 {
+    margin: 0.25rem 0 0;
+    font-size: 1.35rem;
+  }
+
+  .progress-rail {
+    --progress-fill: 0%;
+    position: relative;
+    display: grid;
+    gap: 0.9rem;
+    margin-top: 1.1rem;
+    padding-left: 0.2rem;
+  }
+
+  .progress-rail::before,
+  .progress-rail::after {
+    content: "";
+    position: absolute;
+    left: 1rem;
+    top: 0.3rem;
+    bottom: 0.3rem;
+    width: 4px;
+    border-radius: 999px;
+  }
+
+  .progress-rail::before {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .progress-rail::after {
+    background: linear-gradient(180deg, #7be94d 0%, #51c9ff 100%);
+    height: var(--progress-fill);
+    bottom: auto;
+  }
+
+  .progress-step {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 2.6rem minmax(0, 1fr);
+    gap: 0.85rem;
+    align-items: center;
+  }
+
+  .progress-step__marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 999px;
+    border: 3px solid rgba(164, 201, 255, 0.2);
+    background: rgba(16, 38, 108, 0.95);
+    box-shadow: 0 0 0 6px rgba(8, 22, 70, 0.26);
+    font-weight: 700;
+  }
+
+  .progress-step__content {
+    padding: 0.8rem 0.9rem;
+    border-radius: 0.95rem;
+    border: 1px solid rgba(164, 201, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease, opacity 160ms ease;
+  }
+
+  .progress-step__status {
+    margin: 0;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+
+  .progress-step__content strong {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 1rem;
+    text-transform: capitalize;
+  }
+
+  .progress-step--completed-success .progress-step__marker {
+    border-color: rgba(121, 232, 76, 0.5);
+    background: linear-gradient(180deg, #66df36 0%, #4fbf25 100%);
+    color: #103100;
+  }
+
+  .progress-step--completed-success .progress-step__content {
+    background: rgba(96, 220, 71, 0.12);
+    border-color: rgba(121, 232, 76, 0.22);
+  }
+
+  .progress-step--current .progress-step__marker {
+    border-color: rgba(81, 201, 255, 0.62);
+    background: linear-gradient(180deg, #5cb8ff 0%, #3274f2 100%);
+    color: white;
+    transform: scale(1.08);
+  }
+
+  .progress-step--current .progress-step__content {
+    background: linear-gradient(180deg, rgba(81, 201, 255, 0.18), rgba(33, 73, 163, 0.34));
+    border-color: rgba(81, 201, 255, 0.38);
+    box-shadow: 0 10px 28px rgba(8, 22, 70, 0.2);
+  }
+
+  .progress-step--completed-failed .progress-step__marker {
+    border-color: rgba(255, 121, 121, 0.5);
+    background: linear-gradient(180deg, #ff8a8a 0%, #e25353 100%);
+    color: white;
+  }
+
+  .progress-step--completed-failed .progress-step__content {
+    background: rgba(231, 83, 83, 0.14);
+    border-color: rgba(255, 121, 121, 0.24);
+  }
+
+  .progress-step--completed-neutral .progress-step__marker {
+    border-color: rgba(164, 201, 255, 0.32);
+    background: linear-gradient(180deg, #6faaf3 0%, #4874c6 100%);
+    color: white;
+  }
+
+  .progress-step--completed-neutral .progress-step__content {
+    background: rgba(91, 149, 235, 0.12);
+    border-color: rgba(113, 177, 255, 0.22);
+  }
+
+  .progress-step--pending .progress-step__marker {
+    border-color: rgba(255, 204, 96, 0.58);
+    background: linear-gradient(180deg, #ffd867 0%, #efb53d 100%);
+    color: #573f00;
+  }
+
+  .progress-step--pending .progress-step__content {
+    background: rgba(255, 196, 82, 0.16);
+    border-color: rgba(255, 204, 96, 0.26);
+  }
+
+  .progress-step--upcoming .progress-step__content,
+  .progress-step--upcoming .progress-step__marker {
+    opacity: 0.58;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1180,13 +1380,14 @@
     .problem-brief,
     .hypothesis-grid,
     .trace-workspace,
-    .problem-description-card {
+    .problem-description-card,
+    .problem-sample-grid,
+    .round-layout {
       grid-template-columns: 1fr;
     }
 
     .lobby-panel__header,
     .stage-card__header,
-    .step-flow-card__header,
     .interaction-stage__header,
     .hypothesis-modal__header,
     .hypothesis-modal__footer,
@@ -1213,9 +1414,43 @@
       width: 100%;
     }
 
-    .flow-progress,
     .execution-controls {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .progress-sidebar {
+      position: static;
+    }
+
+    .progress-rail {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.7rem;
+      padding-left: 0;
+    }
+
+    .progress-rail::before,
+    .progress-rail::after {
+      left: 0.6rem;
+      right: 0.6rem;
+      top: 1rem;
+      bottom: auto;
+      width: auto;
+      height: 4px;
+    }
+
+    .progress-rail::after {
+      width: var(--progress-fill);
+      height: 4px;
+    }
+
+    .progress-step {
+      grid-template-columns: 1fr;
+      justify-items: start;
+      gap: 0.55rem;
+    }
+
+    .progress-step__marker {
+      box-shadow: 0 0 0 4px rgba(8, 22, 70, 0.2);
     }
   }
 }
@@ -1250,9 +1485,12 @@
       font-size: 2.3rem;
     }
 
-    .flow-progress,
     .execution-controls {
       grid-template-columns: 1fr;
+    }
+
+    .progress-rail {
+      grid-template-columns: 1fr 1fr;
     }
   }
 }
