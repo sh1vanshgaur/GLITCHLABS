@@ -102,7 +102,8 @@ The round UI now includes:
 - Backend: FastAPI
 - Realtime: WebSockets
 - State: in-memory + JSON persistence
-- Data: curated local snippet dataset
+- LLM Integration: Meta Llama 3.1 8B (via HuggingFace) for dynamic problem generation & submission verification
+- Data: Curated local snippet dataset + infinitely generated LLM problems
 
 ## Repository Structure
 
@@ -240,8 +241,10 @@ Frontend default URL:
 
 ### Backend
 
+Create a `.env` file in the `backend/` directory referencing `.env.example`:
 - `GLITCHLABS_ALLOWED_ORIGINS`
 - `GLITCHLABS_STATE_FILE`
+- `HF_TOKEN` (Required for LLM-powered dynamic problem generation and flexible code verification)
 
 ### Frontend
 
@@ -272,15 +275,11 @@ Recently verified in this codebase:
 ## Known Limitations
 
 - Temporary WebSocket disconnect handling is still a weak area
-- Exact code checking is strict and still has room for smarter normalization
 - Incorrect edit submissions are recorded once per round and then locked
-- The dataset is curated, so content breadth is still limited
 
 ## Future Improvements
 
-- More snippet packs and categories
 - Better reconnect handling for multiplayer sessions
-- More flexible accepted solution matching
 - Richer round analytics and scoreboard history
 - Host moderation controls
 - Persistent user profiles and match history

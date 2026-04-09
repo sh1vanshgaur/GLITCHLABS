@@ -46,10 +46,30 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _get_unified_problem(problem_id: str) -> dict:
+    if problem_id.startswith("llm-"):
+        from .llm_generator import get_generated_problem
+        prob = get_generated_problem(problem_id)
+        if prob:
+            return prob
+        raise KeyError("LLM generated problem not found or expired from memory.")
+    return get_problem_by_id(problem_id)
+
+
 @app.get("/problem/{problem_id}")
 def get_problem(problem_id: str) -> dict:
     try:
-        return get_public_problem_by_id(problem_id)
+        problem = _get_unified_problem(problem_id)
+        return {
+            "id": problem["id"],
+            "language": problem["language"],
+            "difficulty": problem["difficulty"],
+            "category": problem["category"],
+            "title": problem["title"],
+            "problem_statement": problem["problem_statement"],
+            "buggy_code": problem["buggy_code"],
+            "test_cases": problem["test_cases"],
+        }
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -62,7 +82,7 @@ def get_questions() -> list[dict[str, str]]:
 @app.post("/submit-hypothesis")
 def submit_hypothesis(payload: SubmitHypothesisRequest) -> dict:
     try:
-        problem = get_problem_by_id(payload.problem_id)
+        problem = _get_unified_problem(payload.problem_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -81,7 +101,7 @@ def submit_hypothesis(payload: SubmitHypothesisRequest) -> dict:
 @app.post("/run-trace")
 def run_trace(payload: RunTraceRequest) -> dict:
     try:
-        problem = get_problem_by_id(payload.problem_id)
+        problem = _get_unified_problem(payload.problem_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -91,12 +111,22 @@ def run_trace(payload: RunTraceRequest) -> dict:
 @app.post("/submit-solution")
 def submit_solution(payload: SubmitSolutionRequest) -> dict:
     try:
-        problem = get_problem_by_id(payload.problem_id)
+        problem = _get_unified_problem(payload.problem_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
     normalize = lambda value: "".join(value.split()).lower()
     correct = normalize(payload.code_submission) == normalize(problem["correct_code"])
+    
+    # Fallback to LLM verification if exact match fails
+    if not correct and problem.get("_llm_generated"):
+        from .config import use_llm_generation
+        if use_llm_generation():
+            from .llm_generator import verify_submission
+            llm_result = verify_submission(problem, payload.code_submission)
+            if llm_result:
+                correct = True
+
     return {"correct": correct, "explanation": problem["explanation"]}
 
 

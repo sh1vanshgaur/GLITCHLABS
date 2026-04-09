@@ -14,7 +14,9 @@ from uuid import uuid4
 
 from fastapi import WebSocket
 
+from .config import use_llm_generation
 from .data.snippets import get_match_snippets
+from .llm_generator import generate_match_problems, prefetch_problems, verify_submission
 from .storage import StateStore
 
 COUNTDOWN_SECONDS = 5
@@ -119,14 +121,28 @@ class LobbyManager:
 
         lobby.selected_language = self._winning_vote(lobby.language_votes, "Python")
         lobby.selected_difficulty = self._winning_vote(lobby.difficulty_votes, "Easy")
-        lobby.round_plan = [
-            deepcopy(snippet)
-            for snippet in get_match_snippets(
+
+        # Try LLM generation first, fall back to hardcoded snippets
+        llm_problems = None
+        if use_llm_generation():
+            llm_problems = generate_match_problems(
                 lobby.selected_language,
                 lobby.selected_difficulty,
-                round_count=MATCH_ROUNDS,
+                count=MATCH_ROUNDS,
             )
-        ]
+
+        if llm_problems:
+            lobby.round_plan = [deepcopy(p) for p in llm_problems]
+        else:
+            lobby.round_plan = [
+                deepcopy(snippet)
+                for snippet in get_match_snippets(
+                    lobby.selected_language,
+                    lobby.selected_difficulty,
+                    round_count=MATCH_ROUNDS,
+                )
+            ]
+
         lobby.current_round_index = 0
         self._reset_scores(lobby)
         self._prepare_round(lobby)
@@ -149,6 +165,9 @@ class LobbyManager:
             return payload
 
         normalized_submission = self._normalize_code(code_submission)
+        # Store raw submission for potential LLM verification
+        if lobby.current_snippet and lobby.current_snippet.get("_llm_generated"):
+            lobby.current_snippet["_last_raw_submission"] = code_submission.strip()
         is_correct = self._is_correct_submission(lobby.current_snippet, normalized_submission)
         existing_submission = next(
             (entry for entry in lobby.round_submissions if entry["player_id"] == player.id),
@@ -492,7 +511,19 @@ class LobbyManager:
         return counts.most_common(1)[0][0]
 
     def _is_correct_submission(self, snippet: dict[str, Any], normalized_submission: str) -> bool:
-        return normalized_submission == self._normalize_code(snippet["fixed_code"])
+        # Exact match first (fast path)
+        if normalized_submission == self._normalize_code(snippet["fixed_code"]):
+            return True
+
+        # For LLM-generated problems, also try LLM verification
+        if snippet.get("_llm_generated") and use_llm_generation():
+            original_submission = snippet.get("_last_raw_submission", "")
+            if original_submission:
+                llm_result = verify_submission(snippet, original_submission)
+                if llm_result:
+                    return True
+
+        return False
 
     def _sync_round_leader(self, lobby: Lobby) -> None:
         if not lobby.correct_submissions:
@@ -519,6 +550,17 @@ class LobbyManager:
             lobby.winner_submission = "No correct fix was submitted before the timer expired."
 
         lobby.stage = "results"
+
+        # Prefetch next batch of problems in background
+        if use_llm_generation():
+            asyncio.ensure_future(self._prefetch_problems(lobby.selected_language, lobby.selected_difficulty))
+
+    async def _prefetch_problems(self, language: str, difficulty: str) -> None:
+        """Background task to pre-generate problems for the next match."""
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, prefetch_problems, language, difficulty)
+        except Exception:
+            pass  # Non-critical, silent fail
 
     def _points_for_order(self, solve_order: int, total_players: int) -> int:
         return max(total_players - solve_order + 1, 1)
