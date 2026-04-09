@@ -20,7 +20,7 @@ from .llm_generator import generate_match_problems, prefetch_problems, verify_su
 from .storage import StateStore
 
 COUNTDOWN_SECONDS = 5
-ROUND_SECONDS = 90
+ROUND_SECONDS = 420
 MATCH_ROUNDS = 3
 
 
