@@ -6,21 +6,21 @@ import { formatSeconds } from "./lib/utils";
 const languages = ["Python", "Java", "C", "C++"];
 const difficulties = ["Easy", "Medium", "Hard"];
 
-const mascotPalette = ["#ff5858", "#ff9c2a", "#f5eb40", "#78e33a", "#38dbff", "#4f5fff", "#aa47ff", "#ff7ed2"];
+const mascotPalette = ["#00ff41", "#00f0ff", "#ff00ff", "#ffb800", "#ff3e3e", "#7b61ff", "#00ffa3", "#ff6090"];
 
 const infoCards = [
   {
-    icon: "?",
+    icon: "$>",
     title: "About",
     content: "GLITCHLABS is a multiplayer debugging game where everyone gets the same broken snippet and races to submit the correct fix."
   },
   {
-    icon: "*",
+    icon: "//",
     title: "Why GLITCHLABS?",
     content: "It turns bug fixing into a fast social challenge, helping players practice logic, speed, and clean debugging under pressure."
   },
   {
-    icon: "!",
+    icon: ">>",
     title: "How to play",
     content: "Enter a name, join a room, vote for language and difficulty, then fix the buggy code before anyone else."
   }
@@ -133,25 +133,14 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <BackgroundLayer />
       <div className="page-wrap">
         <header className="hero-header">
           <div className="logo-wrap">
-            <div className="logo-mark" aria-hidden="true">
-              {"GLITCHLABS".split("").map((letter, index) => (
-                <span key={`${letter}-${index}`} style={{ color: mascotPalette[index % mascotPalette.length] }}>
-                  {letter}
-                </span>
-              ))}
-              <span className="logo-pencil">!</span>
+            <div className="logo-mark" data-text="GLITCHLABS" aria-hidden="true">
+              GLITCHLABS<span className="logo-cursor">_</span>
             </div>
-            <div className="mascot-row" aria-hidden="true">
-              {mascotPalette.map((color, index) => (
-                <div className="mini-mascot" key={color}>
-                  <div className="mini-mascot__head" style={{ backgroundColor: color }} />
-                  <span>{index + 1}</span>
-                </div>
-              ))}
-            </div>
+            <p className="logo-subtitle">debug // compete // conquer</p>
           </div>
         </header>
 
@@ -191,6 +180,12 @@ export default function App() {
                     </div>
 
                     <div className="mascot-stage">
+                      <div className="terminal-bar">
+                        <span className="terminal-dot terminal-dot--red" />
+                        <span className="terminal-dot terminal-dot--yellow" />
+                        <span className="terminal-dot terminal-dot--green" />
+                        <span style={{ marginLeft: '0.5rem' }}>status.exe</span>
+                      </div>
                       <FaceStage avatarColor={selectedAvatarColor} stage={state.stage} status={status} />
                       <AvatarColorPicker
                         colors={mascotPalette}
@@ -297,13 +292,44 @@ export default function App() {
   );
 }
 
+function BackgroundLayer() {
+  return (
+    <div className="bg-layer" aria-hidden="true">
+      <div className="bg-grid" />
+      <div className="bg-aurora bg-aurora--1" />
+      <div className="bg-aurora bg-aurora--2" />
+      <div className="bg-aurora bg-aurora--3" />
+      <div className="bg-scanline-bar" />
+      <div className="bg-noise" />
+      <div className="bg-particles">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <span
+            key={i}
+            className="bg-particle"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${60 + Math.random() * 40}%`,
+              animationDelay: `${Math.random() * 12}s`,
+              animationDuration: `${8 + Math.random() * 10}s`,
+              fontSize: `${8 + Math.random() * 6}px`,
+              opacity: 0
+            }}
+          >
+            {['0', '1', '{', '}', '<', '>', '/', ';', '(', ')', '=', '#', '$', '%', '&', '|', '!', '?', '*', '+'][i % 20]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FaceStage({ avatarColor, stage, status }) {
   const face = stage === "landing" ? "^_^" : stage === "lobby" ? "-_-" : stage === "countdown" ? "0_0" : status === "Error" ? "x_x" : ">_<";
 
   return (
     <div className="face-stage">
       <span className="face-arrow">&lt;</span>
-      <div className="face-bubble" style={{ background: `linear-gradient(180deg, ${avatarColor} 0%, rgba(31, 53, 164, 0.98) 100%)` }}>
+      <div className="face-bubble" style={{ borderColor: `${avatarColor}55`, boxShadow: `0 0 20px ${avatarColor}22, inset 0 0 20px ${avatarColor}11` }}>
         {face}
       </div>
       <span className="face-arrow">&gt;</span>
