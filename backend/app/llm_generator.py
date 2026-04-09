@@ -98,6 +98,7 @@ Return a JSON array of exactly {count} objects. Each object must have this EXACT
 
 IMPORTANT:
 - Return ONLY the JSON array, no markdown, no code fences, no extra text
+- STRICTLY valid JSON ONLY. Every string MUST be wrapped in standard double quotes ("). DO NOT use backticks (`) or triple quotes. Code strings must be on a single line using escaped newlines (\\n) and escaped internal quotes (\\\").
 - `fixed_code` must be identical to `correct_code`
 - Exactly ONE trace step should have `"suspicious": true`
 - Make each problem about a DIFFERENT topic (don't repeat similar problems)
@@ -200,6 +201,21 @@ def generate_match_problems(
             close_idx = raw_text.rfind("}")
             if close_idx != -1:
                 raw_text = raw_text[:close_idx+1] + "]"
+
+        # Repair triple-quoted or backtick strings returned by the LLM
+        import re
+        def replace_invalid_quotes(match):
+            content = match.group(1)
+            content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '')
+            return f'"{content}"'
+            
+        if '"""' in raw_text:
+            raw_text = re.sub(r'"""(.*?)"""', replace_invalid_quotes, raw_text, flags=re.DOTALL)
+            
+        # Catch JSON values formed with backticks instead of quotes: "key": `value`
+        if '`' in raw_text:
+            # We specifically target backticks that appear after a colon to avoid replacing markdown backticks in explanations
+            raw_text = re.sub(r':\s*`(.*?)`', lambda m: ': ' + replace_invalid_quotes(m), raw_text, flags=re.DOTALL)
 
         try:
             problems = json.loads(raw_text)
