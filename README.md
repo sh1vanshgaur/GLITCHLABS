@@ -81,20 +81,6 @@ The round UI now includes:
 - Medium
 - Hard
 
-### Categories In Dataset
-
-- syntax
-- logic
-- runtime
-- off-by-one
-- binary search
-- hashing
-- recursion
-- sliding window
-- stack/queue
-- arrays
-- strings
-- dp
 
 ## Tech Stack
 
